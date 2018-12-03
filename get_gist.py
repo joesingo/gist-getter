@@ -16,29 +16,35 @@ and the script is run as
 """
 import sys
 
-from bs4 import BeautifulSoup
 import requests
 
 
-BASE_URL = "https://gist.github.com"
+API_URL = "https://api.github.com"
 USERNAME = "joesingo"
 
 
-def get_gist_url(filename):
-    response = requests.get("/".join((BASE_URL, USERNAME)))
-    soup = BeautifulSoup(response.text, "html.parser")
+def get_raw_url(filename):
+    """
+    Return raw URL for a file within a gist. Raises ValueError if file is not
+    found.
+    """
+    resp = requests.get("{base}/users/{user}/gists".format(
+        base=API_URL,
+        user=USERNAME
+    )).json()
 
-    link = soup.find("a", string=filename)
-    if not link:
-        raise ValueError("Gist '{}' not found".format(filename))
+    if "message" in resp:
+        raise ValueError("Error listing gists. Message from API is: {}".format(
+            resp["message"]
+        ))
 
-    return BASE_URL + link.get("href")
+    for obj in resp:
+        if filename in obj["files"]:
+            return obj["files"][filename]["raw_url"]
 
-
-def get_raw_url(gist_url):
-    response = requests.get(gist_url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    return BASE_URL + soup.find("a", string="Raw").get("href")
+    raise ValueError("File '{}' not found for user '{}'".format(
+        filename, USERNAME
+    ))
 
 
 if __name__ == "__main__":
@@ -47,10 +53,9 @@ if __name__ == "__main__":
         sys.exit(1)
 
     try:
-        gist_url = get_gist_url(sys.argv[1])
+        raw_url = get_raw_url(sys.argv[1])
     except ValueError as ex:
         sys.stderr.write("{}: {}\n".format(sys.argv[0], ex))
         sys.exit(1)
 
-    raw_url = get_raw_url(gist_url)
     print(requests.get(raw_url).text)
